@@ -4,15 +4,12 @@ import sys
 import xml.etree.ElementTree as ET
 import re
 
-class Intepretator:
-    def __init__(self):
-        self.tmp = 1
-
-class Variable: 
-     def __init__(self,value):
+class Variable:
+    def __init__(self, value):
+        # Initial values for definedf, type and value attributes
         self.definedf = None
-        self.value = value
         self.type = None
+        self.value = value
 
 class Frame:
     def __init__(self):
@@ -27,11 +24,13 @@ class Frame:
         else:
             print(f"Variable {name} not defined, error caused by instruction number " + root.get('order'), file=sys.stderr)
             sys.exit(54)
+
     def check_variable(self, name):
         if name in self.variables:
             return 1
         else:
             return 0
+
     def define_variable(self, name):
         if name in self.variables:
                 print(f'Variable is being defined twice' , file=sys.stderr) 
@@ -46,24 +45,14 @@ class Frame:
                 self.variables[name].type = type
         else:
             print(f"Variable {name} not defined, error caused by set_variable ", file=sys.stderr)
-            sys.exit(54) ## FIX define an unexisting varible
+            sys.exit(54)
+    
     def get_type(self,name):
         result = self.variables[name].type
         if result == None:
             return ''
         else:
             return result
-
-class LocalFrame(Frame):
-    def __init__(self, previous_frame=None):
-        # Initialize the LocalFrame object by calling the constructor of its parent class, Frame
-        super().__init__()
-        # Add additional attributes and methods specific to the LocalFrame class here
-        self.previous_frame = previous_frame
-
-    def get_previous_frame(self):
-        # Return the previous frame (i.e., the frame that was on top of the stack before this one) 
-        return self.previous_frame
 
 class GlobalFrame(Frame):
     def __init__(self):
@@ -73,7 +62,7 @@ class GlobalFrame(Frame):
     def set_label(self, name, root, order):
         if name in self.labels:
             print(f"Label {name} is being defined twice, error caused by instruction number " + root.get('order'), file=sys.stderr)
-            sys.exit(52)    ## FIX ERROR CODE
+            sys.exit(52)
         else:     
             self.labels[name] = order
 
@@ -82,20 +71,37 @@ class GlobalFrame(Frame):
             return self.labels.get(name)
         else:
             print(f"Label {name} not defined, error caused by instruction number " + root.get('order'), file=sys.stderr)
-            sys.exit(52)    ## FIX ERROR CODE
+            sys.exit(52)
 
 class XML_validator():
-    def __init__(self,root) :
-        self.root = root
-    def elements_chek(self): 
-        for child in self.root:
-            if not (child.tag == 'instruction'):
-                sys.exit(32) 
-    def validate(self): 
+        def __init__(self,root) :
+            self.root = root
+        def elements_chek(self, root): 
+            if (root.tag != 'instruction' or len(root.attrib)!= 2):
+                print(f"Wrong xml", file=sys.stderr)
+                sys.exit(32)
+        def check_instruction_atributes(self, root):
+                order = root.get('order')
+                opcode = root.get('opcode')
+                if (order == None or opcode == None):
+                    print(f"Wrong xml", file=sys.stderr)
+                    sys.exit(32)
+                else:
+                    if (not(order.isdigit)) or int(order) < 1:
+                        print(f"Wrong xml", file=sys.stderr)
+                        sys.exit(32)
+        def check_arguments(self, root):
+            return
+        def child_check(self,root):
+            self.elements_chek(root)
+            self.check_instruction_atributes(root)
+            self.check_arguments(root)
+        def validate(self): 
             if not (self.root.tag=='program' and len(self.root.attrib)==1 and self.root.get('language')=='IPPcode23'):
                 print(f'Wrong root element', file=sys.stderr)
                 sys.exit(32)
-            self.elements_chek()
+            for child in self.root:
+                self.child_check(child)    
 
 class Analisator:
     def __init__(self, source, inputf):
@@ -115,11 +121,10 @@ class Analisator:
         self.input = inputf
         self.gf = GlobalFrame()
         self.local_frames_stack = []
-        self.tmpframe = LocalFrame()
+        self.tmpframe = Frame()
         self.order = 1
-        self.inpret = Intepretator()
         self.tff = 0 # temporary frame flag
-        self.stack = []
+        self.stack = [] 
         self.callstack = []
         self.jump_flag = 0
         try:
@@ -166,7 +171,7 @@ class Analisator:
             if not (self.gf.check_variable(tmp_list[1])):
                 print(f"Variable {tmp_list[1]} not defined, error caused by instruction number " + root.get('order'), file=sys.stderr)
                 sys.exit(54)
-        
+    
     def get_var(self,root,tmp_list):
         if tmp_list[0] == 'TF':
             self.frame_defined_check('t',root)
@@ -208,7 +213,7 @@ class Analisator:
             tmp =  Variable(value) 
             tmp.type = type
             return tmp
-        
+    # set a variable with result of aritmetic instructions 
     def arithmetic_instr(self, root, instr, var, var1, var2):
         if (var1.type == 'int' and var2.type == 'int'):
             if instr == 'ADD':
@@ -226,7 +231,7 @@ class Analisator:
         else:
             print(f'Wrong type of operand in {instr}, error caused by instruction number ' + root.get('order'), file=sys.stderr)
             sys.exit(53)   
-
+            
     def get_label(self,root, label):
         return self.gf.get_label(label,root)
 
@@ -243,6 +248,7 @@ class Analisator:
             return False 
         else:
             return True
+    # function that returns result of LT GT EQ
     def relation_instr(self, root, isntr, var, var1, var2):
         if (var1.type == 'nil' or var2.type == 'nil') and isntr !='EQ':
                 print(f'Wrong type of operand, error caused by instruction number ' + root.get('order'), file=sys.stderr)
@@ -287,21 +293,37 @@ class Analisator:
         else:
             print(f'Different or wrong types of operands, error caused by instruction number ' + root.get('order'), file=sys.stderr)
             sys.exit(53)   
-
+    
     def set_after_rel_isntr(self, root, isntr, var, var1, var2):
         val = self.relation_instr(root, isntr, var, var1, var2)
         self.set_var(root, var, val, 'bool')
+        
+    # helper function for Read instuction
+    def read_comparator(self, root, value, type):
+        if value == '':
+            value = 'nil'
+            type  = 'nil'
+        else:  
+            if (type == 'bool'):
+                if value != 'true':
+                    value = 'false'
+            elif (type == 'int') :
+                if not(value.isdigit()):
+                    value = 'nil'
+                    type  = 'nil'
+        tmp_list = [value, type]
+        return tmp_list
 
-    def parse_instr(self,root) :  
+    def parse_instr(self,root) :
             try:
-                tmp = self.instarray[root.get('opcode')] 
+                tmp = self.instarray[root.get('opcode').upper()] 
             except KeyError:
                 print(f'Undefined operation code, error caused by instruction number ' + root.get('order'), file=sys.stderr)
                 sys.exit(32)
             if tmp[0] == '0':
                 #CREATEFRAME
                 if tmp[1] == '1':
-                    self.tmpframe = LocalFrame()
+                    self.tmpframe = Frame()
                     self.tff = 1
                 #PUSHFRAME   
                 elif tmp[1] == '3':
@@ -331,9 +353,7 @@ class Analisator:
                 #BREAK
                 elif tmp[1] == '5':
                         print(f'Instruction position is' + root.get('order'), file=sys.stderr)
-
-
-            # DEFVAR and POPS analyze
+            #DEFVAR and POPS analyze
             elif tmp[0] == '1':
                 tmp_list = root.find('arg1').text.split('@')
                 #DEFVAR
@@ -536,12 +556,14 @@ class Analisator:
                     sys.exit(56)
                 var = root.find('arg1').text.split('@')
                 type = root.find('arg2').text
+                if not (root.find('arg2').get('type') == 'type'):
+                    print(f'wrong xml, error caused by instruction number ' + root.get('order'), file=sys.stderr)
+                    sys.exit(32)
                 input_tmp = self.input.readline().strip()
-                if input_tmp == None:
-                    input_tmp= 'nil'
-                    type = 'nil'
+                value_type = []
+                value_type = self.read_comparator(root, input_tmp, type)
                 self.check_var(root,var)
-                self.set_var(root,var,input_tmp,type)
+                self.set_var(root,var, value_type[0], value_type[1])
             elif tmp[0] == '7' :
                 label = root.find('arg1').text
                 #CALL
@@ -551,14 +573,14 @@ class Analisator:
                     self.jump_flag = 1
                     self.order = self.get_label(root, label)
                 #LABEL
+                #Skip label instuctiona, cause they was readed byt first run method 
                 elif tmp[1] == '2':
-                    #self.set_label(root,label,int(self.order)+1)
                     return
                 #JUMP
                 elif tmp[1] == '3':
                     self.jump_flag = 1
                     self.order = self.get_label(root,label)
-
+    ## bubble sort for dictionaries representintg xml element as value and order as key
     def bubble_sort_dict_by_key(self,dct):
         keys = list(dct.keys())
         for i in range(len(keys)):
@@ -567,11 +589,14 @@ class Analisator:
                     keys[j], keys[j + 1] = keys[j + 1], keys[j]
         return {k: dct[k] for k in keys}
 
+    # method that iterates through elements of xml and call parse instr method on each element
     def iterate(self, ordered_childs, order):
         if type(order) != type('str'):
             order = str(order)
+        # index is start position representing by current order
         order_index = list(ordered_childs.keys()).index(order)
         for order, child in list(ordered_childs.items())[order_index:]:
+            # jump_flag represents jumps that occurs in program
             if self.jump_flag:
                 break
             if child.tag != 'instruction':
@@ -580,9 +605,10 @@ class Analisator:
             self.order = order
             self.parse_instr(child)
         if self.jump_flag:
+            #reseting flagjump and call iterate method with after jump order
             self.jump_flag = 0
             self.iterate(ordered_childs, str(int(self.order)-1))
-
+    #bubble sort for list of xml elements by atribbute order 
     def label_bubble_sort(self,arr):
         n = len(arr)
         for i in range(n):
@@ -590,23 +616,21 @@ class Analisator:
                 if arr[j].get('order') > arr[j+1].get('order') :
                     arr[j], arr[j+1] = arr[j+1], arr[j]
         return arr
-
+    
     def parse_labels(self, root):
         label = root.find('arg1').text
         self.set_label(root,label,str(int(self.order)+1))
-
+    # setting labels 
     def first_run(self):
         instructions = self.root.findall("./instruction[@opcode='LABEL']")
         instructions = self.label_bubble_sort(instructions)
         for child in instructions:
-            if child.tag != 'instruction':
-                    print(f'Wrong element, error caused by instruction number ' + child.get('order'), file=sys.stderr)
-                    sys.exit(32)
             self.order = child.get('order')
             self.parse_labels(child)
-
+    # sorting xml elements by order, setting labels, starting iterate method
     def analyse(self):
         validator = XML_validator(self.root)
+        validator.validate()
         ordered_childs = {}
         for child in self.root:
             if child.get('order') in ordered_childs:
@@ -620,7 +644,7 @@ class Analisator:
         self.first_run()
         self.iterate(ordered_childs, first_key)
     
-
+## Main code setcion that parse agruments and then run analyse method of analysator class
 parser = argparse.ArgumentParser(description='Help message and exit')
 parser.add_argument('--source', metavar='file', help='path to source file')
 parser.add_argument('--input', metavar='file', help='path to input file')
@@ -640,8 +664,8 @@ if input_file != '-' and not os.path.isfile(input_file):
 if input_file != '-':
    input_file =  open(input_file,'r')
 
-
 if source_file != '-':
+    # start of analyse
     with open(source_file) as s_f:
         analyse = Analisator(source_file,input_file)
     pass
